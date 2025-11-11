@@ -17,8 +17,8 @@ Run the .ahk file
 
 Make sure Clash of Clans is closed.
 
-Press Control K to start the script.
-Press Control E to stop the script at any Point.
+Press CTRL+K to start the script.
+Press CTRL+E to stop the script at any Point.
 
 Credit to the original creator (I added a bunch of stuff and will add more in the future): https://github.com/dummyrock/ClashOfClansBuilderBaseLootMacro
 
