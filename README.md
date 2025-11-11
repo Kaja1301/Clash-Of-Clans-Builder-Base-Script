@@ -1,5 +1,5 @@
 # Clash-Of-Clans-Builder-Base-Script
-This is a macro for automatically running and farming builder elixir and gold in clash of clans.
+This is a macro focused on gathering resources automatically for your builder base. Use this to get the 6th builder ASAP.
 
 
 https://play.google.com/googleplaygames
