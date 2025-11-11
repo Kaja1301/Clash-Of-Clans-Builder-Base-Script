@@ -24,6 +24,6 @@ Run the ahk script
 Press Control K to start the script, it will run for a bit then stop so that when your storages are full it doesn't still run
 Press Control E to stop the script at any Point
 
-Crédit to the original creator (I added a bunch of stuff and will add more in the future): https://github.com/dummyrock/ClashOfClansBuilderBaseLootMacro
+Credit to the original creator (I added a bunch of stuff and will add more in the future): https://github.com/dummyrock/ClashOfClansBuilderBaseLootMacro
 
 I DO NOT TAKE RESPONSIBILITY FOR YOU GETTING BANNED AS THIS IS AGAINST THE TOS OF CLASH OF CLANS
