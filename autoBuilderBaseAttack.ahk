@@ -3,66 +3,69 @@ Global LastProgressTime := 0
 Global ShouldRestart := false
 Global MaxStuckTime := 180000 ; 3 minutes in milliseconds (180 seconds)
 
+; Global variables for GUI and pause state
+Global IsPaused := false
+Global IsRunning := false
+Global CurrentMode := "Normal Mode"
+Global MainGuiVisible := false
+
 ; Global variables for debug console
-Global ConsoleGui := ""
 Global ConsoleEditHwnd := ""
 Global ConsoleVisible := false
 Global IsDebugMode := false
 
-^K:: ; Hotkey: Ctrl + K
-{	
-	; Check if debug mode is enabled and initialize console
-	IsDebugMode := CheckDebugMode()
-	If (IsDebugMode)
-	{
-		CreateConsole()
-		DebugLog("Script started - Debug mode enabled")
-	}
-	
-	; Reset restart flag
-	ShouldRestart := false
-	
-	; Initialize progress tracking
-	LastProgressTime := A_TickCount
-	
-	; Start the main attack loop
-	RunMainAttackLoop()
-	return
-}
+; Initialize GUI on script start
+IsDebugMode := CheckDebugMode()
+CreateMainGui()
 
-RunMainAttackLoop()
+RunMainAttackLoop(Mode)
 {
 	Global ShouldRestart
 	Global LastProgressTime
+	Global IsPaused
+	Global CurrentMode
 	
-	; Check if surrender mode is enabled
-	IsSurrenderMode := CheckSurrenderMode()
-	DebugLog("Starting main attack loop. Surrender mode: " . (IsSurrenderMode ? "enabled" : "disabled"))
+	; Determine if surrender mode based on Mode parameter
+	IsSurrenderMode := (Mode = "Surrender Mode")
+	DebugLog("Starting main attack loop. Mode: " . Mode)
 	
 	;Loops 25 times
 	Loop, 25{
 		DebugLog("Outer loop iteration: " . A_Index . " / 25")
 		
+		; Check if paused
+		While (IsPaused)
+		{
+			Sleep, 100
+		}
+		
+		; Check if script should stop
+		If (!IsRunning)
+		{
+			DebugLog("Script stopped by user")
+			UpdateStatus("Stopped")
+			return
+		}
+		
 		; Check if manual restart was triggered
 		If (ShouldRestart)
 		{
 			DebugLogWarning("Manual restart triggered")
-			MsgBox, Restarting script...
 			ShouldRestart := false
 			LastProgressTime := A_TickCount
 			; Restart from beginning by calling the function again
-			RunMainAttackLoop()
+			RunMainAttackLoop(CurrentMode)
 			return
 		}
 		
 		; Check if script is stuck (no progress detected)
 		If (CheckIfStuck())
 		{
-			DebugLogError("Script appears to be stuck - restarting")
+			DebugLogError("Script appears to be stuck - restarting automatically")
 			ShouldRestart := false
 			LastProgressTime := A_TickCount
 			; Restart from beginning
-			RunMainAttackLoop()
+			RunMainAttackLoop(CurrentMode)
 			return
 		}
 		
@@ -70,26 +73,39 @@ RunMainAttackLoop()
 		Loop, 6 {
 			DebugLog("Inner loop iteration: " . A_Index . " / 6")
 			
+			; Check if paused
+			While (IsPaused)
+			{
+				Sleep, 100
+			}
+			
+			; Check if script should stop
+			If (!IsRunning)
+			{
+				DebugLog("Script stopped by user")
+				UpdateStatus("Stopped")
+				return
+			}
+			
 			; Check if manual restart was triggered
 			If (ShouldRestart)
 			{
 				DebugLogWarning("Manual restart triggered during attack cycle")
-				MsgBox, Restarting script...
 				ShouldRestart := false
 				LastProgressTime := A_TickCount
 				; Restart immediately
-				RunMainAttackLoop()
+				RunMainAttackLoop(CurrentMode)
 				return
 			}
 			
 			; Check if script is stuck
 			If (CheckIfStuck())
 			{
-				DebugLogError("Script appears to be stuck during attack cycle - restarting")
+				DebugLogError("Script appears to be stuck during attack cycle - restarting automatically")
 				ShouldRestart := false
 				LastProgressTime := A_TickCount
 				; Restart immediately
-				RunMainAttackLoop()
+				RunMainAttackLoop(CurrentMode)
 				return
 			}
 			
@@ -104,24 +120,26 @@ RunMainAttackLoop()
 			; Update progress time after each attack
 			UpdateProgress()
 			DebugLog("Attack cycle " . A_Index . " completed, waiting 5 seconds")
-        	Sleep, 5000 ; Wait 5 seconds before running again
+        	SleepWithPauseCheck(5000) ; Wait 5 seconds before running again
     	}
 		
 		DebugLog("Starting builder elixir collection")
-		GetBuilderElixer()
+		GetBuilderElixer(IsSurrenderMode)
 		; Update progress time after collecting elixir
 		UpdateProgress()
 		DebugLog("Builder elixir collection completed")
 	}
 	DebugLog("Main attack loop completed - all 25 iterations finished")
+	IsRunning := false
+	UpdateStatus("Stopped")
+	; Update button text back to Start
+	GuiControl, Main:, StartStopScript, Start
 	MsgBox, Script Has ran its course, LOOT UP!
 	return
 }
 
-GetBuilderElixer()
+GetBuilderElixer(IsSurrenderMode)
 {
-    ; Check if surrender mode is enabled
-    IsSurrenderMode := CheckSurrenderMode()
     DebugLog("GetBuilderElixer: Surrender mode = " . (IsSurrenderMode ? "enabled" : "disabled"))
     
     ; Check if game is already running (in surrender mode, game stays open)
@@ -144,12 +162,12 @@ GetBuilderElixer()
         DebugLog("Waiting for game window to appear...")
         WinWait, ahk_exe crosvm.exe
         WinActivate, ahk_exe crosvm.exe
-        Sleep, 2000 ; Wait 2 seconds for window to be ready
+        SleepWithPauseCheck(2000) ; Wait 2 seconds for window to be ready
         SetFullscreenIfNeeded() ; Check if fullscreen, if not press F11
         UpdateProgress() ; Update progress after game starts
         DebugLog("Game window activated, waiting 15 seconds for load")
         
-        Sleep, 15000 ; Wait 20 seconds for Clash of Clans to load up
+        SleepWithPauseCheck(15000) ; Wait 15 seconds for Clash of Clans to load up
     }
     Else
     {
@@ -165,7 +183,7 @@ GetBuilderElixer()
         {
             DebugLog("Game window activated successfully")
         }
-        Sleep, 1000 ; Small wait to ensure window is active
+        SleepWithPauseCheck(1000) ; Small wait to ensure window is active
         UpdateProgress() ; Update progress after activating game
     }
 
@@ -199,7 +217,7 @@ GetBuilderElixer()
         DebugLogError("PurpleCart image not found")
     }
 
-	Sleep, 1000 ;wait for loot to be collected
+	SleepWithPauseCheck(1000) ;wait for loot to be collected
 
     ImageSearch, FoundXPathCollect, FoundYPathCollect, WindowWidth /2 , WindowHeight * (3/4), WindowWidth, WindowHeight, *50 %ImagePathCollect%
     If (ErrorLevel = 0)
@@ -213,7 +231,7 @@ GetBuilderElixer()
         DebugLogError("GreenColor (collect) image not found")
     }
 
-    Sleep, 1000
+    SleepWithPauseCheck(1000)
     
     ; If in surrender mode, search for and click RedClose after clicking GreenColor
     If (IsSurrenderMode)
@@ -262,22 +280,22 @@ AttackingLoop()
     DebugLog("Waiting for game window...")
     WinWait, ahk_exe crosvm.exe
     WinActivate, ahk_exe crosvm.exe
-    Sleep, 2000 ; Wait 2 seconds for window to be ready
+    SleepWithPauseCheck(2000) ; Wait 2 seconds for window to be ready
     SetFullscreenIfNeeded() ; Check if fullscreen, if not press F11
     UpdateProgress() ; Update progress after game starts
     DebugLog("Game started, waiting 20 seconds for load")
     
-    Sleep, 20000 ; Wait 20 seconds for Clash of Clans to load up
+    SleepWithPauseCheck(20000) ; Wait 20 seconds for Clash of Clans to load up
 
     ; Call the Attack function (pass false to use normal sleep)
     DebugLog("Initiating attack")
     Attack(false)
     UpdateProgress() ; Update progress after initiating attack
-    Sleep, 5000 ; Wait 5 seconds to enter attack screen
+    SleepWithPauseCheck(5000) ; Wait 5 seconds to enter attack screen
     DebugLog("Deploying troops")
     SpamTroops()
     UpdateProgress() ; Update progress after deploying troops
-    Sleep, 1000 ; Wait after spamming troops
+    SleepWithPauseCheck(1000) ; Wait after spamming troops
 
     ; Close Clash of Clans using process name
     DebugLog("Closing game")
@@ -358,12 +376,12 @@ SurrenderModeAttackingLoop()
             DebugLogError("SurrenderMode: Game window did not appear within 30 seconds")
         }
         WinActivate, ahk_exe crosvm.exe
-        Sleep, 2000 ; Wait 2 seconds for window to be ready
+        SleepWithPauseCheck(2000) ; Wait 2 seconds for window to be ready
         SetFullscreenIfNeeded() ; Check if fullscreen, if not press F11
         UpdateProgress() ; Update progress after game starts
         DebugLog("SurrenderMode: Game started, waiting 20 seconds for load")
         
-        Sleep, 20000 ; Wait 20 seconds for Clash of Clans to load up
+        SleepWithPauseCheck(20000) ; Wait 20 seconds for Clash of Clans to load up
     }
     Else
     {
@@ -379,7 +397,7 @@ SurrenderModeAttackingLoop()
         {
             DebugLog("SurrenderMode: Game window activated successfully")
         }
-        Sleep, 1000 ; Small wait to ensure window is active
+        SleepWithPauseCheck(1000) ; Small wait to ensure window is active
         UpdateProgress() ; Update progress after activating game
     }
     
@@ -387,11 +405,11 @@ SurrenderModeAttackingLoop()
     DebugLog("SurrenderMode: Initiating attack")
     Attack(true)
     UpdateProgress() ; Update progress after initiating attack
-    Sleep, 5000 ; Wait 5 seconds to enter attack screen
+    SleepWithPauseCheck(5000) ; Wait 5 seconds to enter attack screen
     DebugLog("SurrenderMode: Deploying troops")
     SpamTroops()
     UpdateProgress() ; Update progress after deploying troops
-    Sleep, 2000 ; Wait after spamming troops
+    SleepWithPauseCheck(2000) ; Wait after spamming troops
     
     ; Surrender by finding and clicking the red surrender button
     DebugLog("SurrenderMode: Starting surrender process")
@@ -400,7 +418,7 @@ SurrenderModeAttackingLoop()
     
     ; Wait for surrender to complete and return to base
     DebugLog("SurrenderMode: Waiting 5 seconds for surrender to process")
-    Sleep, 5000 ; Wait 5 seconds for surrender to process
+    SleepWithPauseCheck(5000) ; Wait 5 seconds for surrender to process
     
     ; Note: We do NOT close the game in surrender mode, so it stays open for the next attack
     DebugLog("=== SurrenderModeAttackingLoop completed ===")
@@ -426,19 +444,19 @@ Surrender()
     {
         DebugLog("Surrender: RedSurrender found at X=" . FoundXSurrender . " Y=" . FoundYSurrender)
         ClickMouse(FoundXSurrender, FoundYSurrender)
-        Sleep, 1000 ; Wait for surrender dialog/confirmation to appear
+        SleepWithPauseCheck(1000) ; Wait for surrender dialog/confirmation to appear
     }
     Else
     {
         DebugLogWarning("Surrender: RedSurrender not found in bottom area, trying full screen")
         ; If not found, try searching in a different area or wait a bit more
-        Sleep, 1000
+        SleepWithPauseCheck(1000)
         ImageSearch, FoundXSurrender, FoundYSurrender, 0, 0, WindowWidth, WindowHeight, *50 %ImagePathSurrender%
         If (ErrorLevel = 0)
         {
             DebugLog("Surrender: RedSurrender found at X=" . FoundXSurrender . " Y=" . FoundYSurrender . " (full screen search)")
             ClickMouse(FoundXSurrender, FoundYSurrender)
-            Sleep, 1000 ; Wait for surrender dialog/confirmation to appear
+            SleepWithPauseCheck(1000) ; Wait for surrender dialog/confirmation to appear
         }
         Else
         {
@@ -447,14 +465,14 @@ Surrender()
     }
     
     ; After clicking surrender, search for GreenColor and click it (first time)
-    Sleep, 1000 ; Small wait for UI to update
+    SleepWithPauseCheck(1000) ; Small wait for UI to update
     DebugLog("Surrender: Searching for GreenColor confirmation button (first click)")
     ImageSearch, FoundXGreen, FoundYGreen, 0, 0, WindowWidth, WindowHeight, *50 %ImagePathGreen%
     If (ErrorLevel = 0)
     {
         DebugLog("Surrender: GreenColor found at X=" . FoundXGreen . " Y=" . FoundYGreen . " (first click)")
         ClickMouse(FoundXGreen, FoundYGreen)
-        Sleep, 1000 ; Wait for UI to update after first click
+        SleepWithPauseCheck(1000) ; Wait for UI to update after first click
         
         ; Check for GreenColor again and click it (second time)
         DebugLog("Surrender: Searching for GreenColor confirmation button (second click)")
@@ -542,12 +560,12 @@ Attack(SkipSleep)
     {
         DebugLogError("Attack: greyToStartAttack button not found")
     }
-    Sleep 1000
+    SleepWithPauseCheck(1000)
     ; Only sleep if not in surrender mode (SkipSleep will be empty/false if not provided)
     If (SkipSleep != true)
     {
         DebugLog("Attack: Waiting 12 seconds before Find Now")
-        Sleep, 12000 ; Wait 12 seconds between clicking attack button and clicking "Find Now"
+        SleepWithPauseCheck(12000) ; Wait 12 seconds between clicking attack button and clicking "Find Now"
     }
     Else
     {
@@ -608,24 +626,40 @@ ClickMouse(x, y)
     DebugLog("ClickMouse: Clicked at X=" . x . " Y=" . y)
 }
 
-; Define the function to exit the script early
-^E::EndScript() ; Ctrl+E to end the script
+; Pause hotkey (CTRL+P)
+^P::TogglePause() ; Ctrl+P to pause/resume
 
-EndScript()
+TogglePause()
 {
-    MsgBox, Script is ending now. Goodbye!
-    ExitApp
-}
-
-; Manual restart hotkey (CTRL+R)
-^R::ManualRestart() ; Ctrl+R to manually restart
-
-ManualRestart()
-{
-    Global ShouldRestart
-    ShouldRestart := true
-    DebugLogWarning("Manual restart triggered by user (CTRL+R)")
-    MsgBox, Manual restart triggered. Script will restart on next check.
+    Global IsPaused
+    Global IsRunning
+    Global CurrentMode
+    Global MainGuiVisible
+    
+    If (!IsRunning)
+    {
+        Return ; Can't pause if not running
+    }
+    
+    IsPaused := !IsPaused
+    If (IsPaused)
+    {
+        DebugLogWarning("Script paused by user (CTRL+P)")
+        UpdateStatus("Paused: " . CurrentMode . " Script")
+        If (MainGuiVisible)
+        {
+            GuiControl, Main:, PauseScript, Resume
+        }
+    }
+    Else
+    {
+        DebugLog("Script resumed by user (CTRL+P)")
+        UpdateStatus("Running: " . CurrentMode . " Script")
+        If (MainGuiVisible)
+        {
+            GuiControl, Main:, PauseScript, Pause
+        }
+    }
 }
 
 ; Update progress timestamp
@@ -633,6 +667,47 @@ UpdateProgress()
 {
     Global LastProgressTime
     LastProgressTime := A_TickCount
+}
+
+; Sleep with pause checking - respects pause state during sleep
+SleepWithPauseCheck(SleepTime)
+{
+    Global IsPaused
+    Global IsRunning
+    
+    ; Break sleep into smaller chunks to check pause state
+    SleepChunk := 100 ; Check every 100ms
+    TotalChunks := Ceil(SleepTime / SleepChunk)
+    
+    Loop, %TotalChunks%
+    {
+        ; Check if we should stop
+        If (!IsRunning)
+        {
+            Return
+        }
+        
+        ; Wait while paused
+        While (IsPaused)
+        {
+            Sleep, 100
+            If (!IsRunning)
+            {
+                Return
+            }
+        }
+        
+        ; Calculate remaining sleep time
+        RemainingTime := SleepTime - ((A_Index - 1) * SleepChunk)
+        If (RemainingTime > SleepChunk)
+        {
+            Sleep, %SleepChunk%
+        }
+        Else
+        {
+            Sleep, %RemainingTime%
+        }
+    }
 }
 
 ; Check if script is stuck (no progress for MaxStuckTime)
@@ -687,56 +762,204 @@ CheckIfStuck()
 }
 
 ; ============================================
-; DEBUG CONSOLE FUNCTIONS
+; MAIN GUI FUNCTIONS
 ; ============================================
 
-; Create and show console window
-CreateConsole()
+; Create and show main GUI window
+CreateMainGui()
 {
-    Global ConsoleGui
-    Global ConsoleEdit
-    Global ConsoleVisible
+    Global MainGuiVisible
+    Global IsDebugMode
+    Global CurrentMode
+    Global ModeDropdown
+    Global StatusText
+    Global MainConsoleEdit
     
-    If (ConsoleVisible)
+    If (MainGuiVisible)
     {
-        Return ; Console already exists
+        Return ; GUI already exists
     }
     
-    ; Create GUI window
-    Gui, Console:Add, Edit, x10 y10 w800 h500 ReadOnly VConsoleEdit Multi HScroll
-    Gui, Console:Add, Button, x10 y520 w100 h30 gClearConsole, Clear
-    Gui, Console:Add, Button, x120 y520 w100 h30 gCloseConsole, Close
-    Gui, Console:Show, w830 h560, Script Debug Console
-    Gui, Console:Submit, NoHide
-    ; Get the HWND of the ConsoleEdit control for scrolling
-    GuiControlGet, ConsoleEditHwnd, Console:Hwnd, ConsoleEdit
+    ; Create main GUI window
+    Gui, Main:Add, Text, x10 y10 w200 h20, Farm Mode:
+    Gui, Main:Add, DropDownList, x10 y30 w200 h200 Choose1 VModeDropdown gOnModeChange, Normal Mode|Surrender Mode
+    CurrentMode := "Normal Mode" ; Initialize default mode
     
-    ConsoleVisible := true
-    DebugLog("Debug console opened")
+    Gui, Main:Add, Button, x10 y60 w100 h30 gStartStopScript, Start
+    Gui, Main:Add, Button, x120 y60 w100 h30 gRestartScript, Restart
+    Gui, Main:Add, Button, x10 y100 w100 h30 gPauseScript, Pause
+    Gui, Main:Add, Button, x120 y100 w100 h30 gExitScript, Exit
+    
+    Gui, Main:Add, Text, x10 y140 w300 h20, Status:
+    Gui, Main:Add, Text, x10 y160 w300 h20 VStatusText, Stopped
+    
+    ; Add debug console if debug mode is enabled
+    If (IsDebugMode)
+    {
+        Gui, Main:Add, Text, x10 y190 w300 h20, Debug Console:
+        Gui, Main:Add, Edit, x10 y210 w600 h300 ReadOnly VMainConsoleEdit Multi HScroll
+        Gui, Main:Add, Button, x10 y520 w100 h30 gClearMainConsole, Clear Console
+        ; Get the HWND of the console control for scrolling
+        Gui, Main:Show, w630 h560, Clash of Clans Auto Builder Base Attack
+        Gui, Main:Submit, NoHide
+        GuiControlGet, ConsoleEditHwnd, Main:Hwnd, MainConsoleEdit
+        ConsoleVisible := true
+        DebugLog("Debug console opened in main GUI")
+    }
+    Else
+    {
+        Gui, Main:Show, w230 h190, Clash of Clans Auto Builder Base Attack
+    }
+    
+    ; Allow GUI to be minimized
+    Gui, Main:+MinSize200x150
+    
+    MainGuiVisible := true
+    UpdateStatus("Stopped")
 }
 
-; Close console window
-CloseConsole()
+; Handle mode dropdown change
+OnModeChange()
 {
-    Global ConsoleVisible
-    Gui, Console:Destroy
-    ConsoleVisible := false
+    Global CurrentMode
+    Global ModeDropdown
+    Gui, Main:Submit, NoHide
+    GuiControlGet, SelectedMode, Main:, ModeDropdown
+    CurrentMode := SelectedMode
+    DebugLog("Mode changed to: " . CurrentMode)
 }
 
-; Clear console content
-ClearConsole()
+; Start/Stop button handler
+StartStopScript()
 {
-    Global ConsoleEdit
-    GuiControl, Console:, ConsoleEdit, 
+    Global IsRunning
+    Global CurrentMode
+    Global ShouldRestart
+    Global LastProgressTime
+    Global IsPaused
+    Global ModeDropdown
+    
+    If (!IsRunning)
+    {
+        ; Start the script
+        IsRunning := true
+        IsPaused := false
+        ShouldRestart := false
+        LastProgressTime := A_TickCount
+        
+        ; Get current mode from dropdown
+        Gui, Main:Submit, NoHide
+        GuiControlGet, CurrentMode, Main:, ModeDropdown
+        
+        UpdateStatus("Running: " . CurrentMode . " Script")
+        DebugLog("Script started - Mode: " . CurrentMode)
+        
+        ; Change button text to Stop
+        GuiControl, Main:, StartStopScript, Stop
+        
+        ; Start the main attack loop in a new thread
+        RunMainAttackLoop(CurrentMode)
+    }
+    Else
+    {
+        ; Stop the script
+        IsRunning := false
+        IsPaused := false
+        UpdateStatus("Stopped")
+        DebugLog("Script stopped by user")
+        
+        ; Change button text back to Start
+        GuiControl, Main:, StartStopScript, Start
+    }
+}
+
+
+; Restart button handler
+RestartScript()
+{
+    Global ShouldRestart
+    Global IsRunning
+    
+    If (!IsRunning)
+    {
+        Return ; Can't restart if not running
+    }
+    
+    ShouldRestart := true
+    DebugLogWarning("Restart button clicked")
+}
+
+; Pause button handler
+PauseScript()
+{
+    Global IsPaused
+    Global IsRunning
+    Global CurrentMode
+    
+    If (!IsRunning)
+    {
+        Return ; Can't pause if not running
+    }
+    
+    IsPaused := !IsPaused
+    If (IsPaused)
+    {
+        DebugLogWarning("Script paused by user")
+        UpdateStatus("Paused: " . CurrentMode . " Script")
+        GuiControl, Main:, PauseScript, Resume
+    }
+    Else
+    {
+        DebugLog("Script resumed by user")
+        UpdateStatus("Running: " . CurrentMode . " Script")
+        GuiControl, Main:, PauseScript, Pause
+    }
+}
+
+; Exit button handler
+ExitScript()
+{
+    Global IsRunning
+    Global MainGuiVisible
+    
+    If (IsRunning)
+    {
+        IsRunning := false
+    }
+    
+    DebugLog("Script exiting")
+    MainGuiVisible := false
+    Gui, Main:Destroy
+    ExitApp
+}
+
+; Update status display
+UpdateStatus(StatusText)
+{
+    Global MainGuiVisible
+    
+    If (MainGuiVisible)
+    {
+        GuiControl, Main:, StatusText, %StatusText%
+    }
+}
+
+; Clear main console
+ClearMainConsole()
+{
+    Global MainConsoleEdit
+    GuiControl, Main:, MainConsoleEdit, 
     DebugLog("Console cleared")
 }
 
 ; Log a message to console (only if debug mode is enabled)
 DebugLog(Message, Level := "INFO")
 {
-    Global ConsoleEdit
+    Global ConsoleEditHwnd
     Global ConsoleVisible
     Global IsDebugMode
+    Global MainGuiVisible
+    Global MainConsoleEdit
     
     ; Only log if debug mode is enabled
     If (!IsDebugMode)
@@ -750,10 +973,10 @@ DebugLog(Message, Level := "INFO")
     ; Format log entry
     LogEntry := "[" . TimeString . "] [" . Level . "] " . Message . "`r`n"
     
-    ; Append to console if visible
-    If (ConsoleVisible)
+    ; Append to console if visible (main GUI console)
+    If (ConsoleVisible && MainGuiVisible)
     {
-        GuiControlGet, CurrentText, Console:, ConsoleEdit
+        GuiControlGet, CurrentText, Main:, MainConsoleEdit
         NewText := CurrentText . LogEntry
         ; Keep only last 2000 lines to prevent memory issues
         StringSplit, Lines, NewText, `n
@@ -766,7 +989,7 @@ DebugLog(Message, Level := "INFO")
                 StringTrimLeft, NewText, NewText, % (Pos + 1)
             }
         }
-        GuiControl, Console:, ConsoleEdit, %NewText%
+        GuiControl, Main:, MainConsoleEdit, %NewText%
         ; Auto-scroll to bottom
         If (ConsoleEditHwnd != "")
         {
