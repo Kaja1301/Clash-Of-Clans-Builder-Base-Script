@@ -59,7 +59,6 @@ RunMainAttackLoop()
 		If (CheckIfStuck())
 		{
 			DebugLogError("Script appears to be stuck - restarting")
-			MsgBox, Script appears to be stuck. Restarting...
 			ShouldRestart := false
 			LastProgressTime := A_TickCount
 			; Restart from beginning
@@ -87,7 +86,6 @@ RunMainAttackLoop()
 			If (CheckIfStuck())
 			{
 				DebugLogError("Script appears to be stuck during attack cycle - restarting")
-				MsgBox, Script appears to be stuck. Restarting...
 				ShouldRestart := false
 				LastProgressTime := A_TickCount
 				; Restart immediately
